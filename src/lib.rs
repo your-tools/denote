@@ -10,6 +10,7 @@ use thiserror::Error;
 use time::macros::format_description;
 use time::OffsetDateTime;
 
+/// Tools for command-line usage
 pub mod cli;
 
 lazy_static! {
@@ -30,6 +31,8 @@ lazy_static! {
 }
 
 #[derive(Debug, Error)]
+/// Variant of the errors returned by the libray
+#[non_exhaustive]
 pub enum Error {
     #[error("parse error")]
     ParseError(String),
@@ -114,6 +117,9 @@ pub fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)>
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+/// A new-type on top of String so that only valid Ids can
+/// be used
+/// As a reminder, the Id in denote is YYYYMMDDTHHMMSS
 pub struct Id(String);
 
 impl Id {

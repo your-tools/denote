@@ -5,6 +5,8 @@ use time::OffsetDateTime;
 
 use crate::{NotesRepository, OSError};
 
+/// Spawn $EDITOR in a tempory file, then save the
+/// note with the proper filename in `base_path`
 pub fn new_note(base_path: &Path) -> Result<()> {
     let now = OffsetDateTime::now_utc();
     let format = format_description!("[year][month][day]T[hour]:[minute]:[second]");
