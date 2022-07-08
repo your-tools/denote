@@ -10,8 +10,8 @@ lazy_static = "1.4.0"
 regex = "1.6.0"
 serde = {version = "1.0", features = ["derive"]}
 serde_yaml = "0.8.24"
-time = { version = "0.3.11", features = ["std", "formatting", "macros"] }
+tempfile = "3.3.0"
 thiserror = "1.0.31"
+time = { version = "0.3.11", features = ["std", "formatting", "macros"] }
 
 [dev-dependencies]
-tempfile = "3.3.0"

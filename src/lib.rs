@@ -7,6 +7,10 @@ use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use time::macros::format_description;
+use time::OffsetDateTime;
+
+pub mod cli;
 
 lazy_static! {
     static ref FILENAME_RE: Regex = RegexBuilder::new(
@@ -37,7 +41,7 @@ use Error::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn slugify(title: &str) -> String {
+pub fn slugify(title: &str) -> String {
     title.to_ascii_lowercase().replace(' ', "-")
 }
 
@@ -47,7 +51,7 @@ pub fn name_from_relative_path(relative_path: &Path) -> String {
 
 pub fn parse_file_name(name: &str) -> Result<Metadata> {
     let captures = FILENAME_RE.captures(name).ok_or_else(|| {
-        ParseError(format!("Filename {name} did not match expected regex"))
+        ParseError(format!("Filename {name} did not match expected regex").to_string())
     })?;
 
     let id = captures
@@ -85,7 +89,7 @@ pub fn parse_file_name(name: &str) -> Result<Metadata> {
     })
 }
 
-fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
+pub fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
     let docs: Vec<_> = contents.splitn(3, "---\n").collect();
     if docs.is_empty() {
         println!("skipping empty front_matter");
@@ -97,7 +101,7 @@ fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
     }
     let first_doc = &docs[1];
     let text = docs[2];
-    match FrontMatter::parse(first_doc) {
+    match FrontMatter::parse(&first_doc) {
         Ok(f) => Some((f, text.to_string())),
         Err(ParseError(e)) => {
             println!("skipping invalid front_matter: {}", e);
@@ -121,6 +125,12 @@ impl Id {
         let ymd = &self.0[0..8];
         let hms = &self.0[9..];
         format!("{ymd} {hms}")
+    }
+
+    pub fn from_date(offsett_date_time: &OffsetDateTime) -> Self {
+        let format = format_description!("[year][month][day]T[hour][minute][second]");
+        let formatted_date = offsett_date_time.format(&format).unwrap();
+        Self::from_str(&formatted_date).unwrap()
     }
 }
 
@@ -162,7 +172,7 @@ impl Metadata {
         let slug = slugify(&title);
         Metadata {
             id,
-            title: Some(title),
+            title: Some(title.clone()),
             slug,
             keywords,
             extension,
@@ -210,6 +220,14 @@ pub struct FrontMatter {
 }
 
 impl FrontMatter {
+    pub fn title(&self) -> Option<&String> {
+        self.title.as_ref()
+    }
+
+    pub fn keywords(&self) -> Vec<String> {
+        self.keywords.split(" ").map(|x| x.to_string()).collect()
+    }
+
     pub fn dump(&self) -> String {
         serde_yaml::to_string(self).expect("front matter should always be serializable")
     }
@@ -226,10 +244,14 @@ impl FrontMatter {
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Note {
     metadata: Metadata,
-    contents: String,
+    text: String,
 }
 
 impl Note {
+    pub fn new(metadata: Metadata, text: String) -> Self {
+        Self { metadata, text }
+    }
+
     fn relative_path(&self) -> PathBuf {
         let Metadata {
             id,
@@ -262,7 +284,7 @@ impl Note {
         let front_matter = self.metadata.front_matter();
         res.push_str(&front_matter.dump());
         res.push_str("---\n");
-        res.push_str(&self.contents);
+        res.push_str(&self.text);
         res
     }
 }
@@ -285,6 +307,30 @@ impl Notes {
         })
     }
 
+    pub fn import_from_markdown(&self, markdown_path: &Path) -> Result<()> {
+        let contents = std::fs::read_to_string(markdown_path)
+            .map_err(|e| Error::IOError(format!("while reading: {markdown_path:#?}: {e}")))?;
+        let (front_matter, text) = try_extract_front_matter(&contents).ok_or_else(|| {
+            Error::ParseError(format!(
+                "Could not extract front matter from {markdown_path:#?}"
+            ))
+        })?;
+
+        let title = front_matter.title().ok_or_else(|| {
+            Error::ParseError(format!(
+                "Front matter should in {markdown_path:#?} should contain a title"
+            ))
+        })?;
+        let keywords: Vec<_> = front_matter.keywords();
+        let now = OffsetDateTime::now_utc();
+        let id = Id::from_date(&now);
+        let extension = "md".to_owned();
+        let metadata = Metadata::new(id, title.to_string(), keywords, extension);
+
+        let note = Note::new(metadata, text);
+        self.save(&note)
+    }
+
     pub fn load(&self, relative_path: &Path) -> Result<Note> {
         assert!(relative_path.is_relative());
         let full_path = &self.base_path.join(relative_path);
@@ -292,10 +338,13 @@ impl Notes {
             .map_err(|e| IOError(format!("While loading note from {full_path:?}: {e}")))?;
         let file_name = &name_from_relative_path(relative_path);
         let metadata = parse_file_name(file_name)?;
-        let mut note = Note { metadata, contents };
-        if let Some((front_matter, text)) = try_extract_front_matter(&note.contents) {
-            note.metadata.title = front_matter.title;
-            note.contents = text;
+        let mut note = Note {
+            metadata,
+            text: contents,
+        };
+        if let Some((front_matter, text)) = try_extract_front_matter(&note.text) {
+            note.metadata.title = front_matter.title.to_owned();
+            note.text = text;
         }
         Ok(note)
     }
@@ -325,6 +374,7 @@ impl Notes {
 
         std::fs::write(full_path, &to_write)
             .map_err(|e| IOError(format!("While saving note in {full_path:?}: {e}")))?;
+        println!("Note saved in {full_path:#?}");
         Ok(())
     }
 }
@@ -334,7 +384,7 @@ mod tests {
 
     use super::*;
 
-    
+    use tempfile;
 
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
@@ -352,7 +402,7 @@ mod tests {
 
         Note {
             metadata,
-            contents: "This is my note".to_owned(),
+            text: "This is my note".to_owned(),
         }
     }
 
