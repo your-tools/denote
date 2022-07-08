@@ -42,6 +42,7 @@ pub enum Error {
 
 use Error::*;
 
+/// Result type for this library
 pub type Result<T> = std::result::Result<T, Error>;
 
 fn slugify(title: &str) -> String {
