@@ -3,6 +3,13 @@ name = "denote"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["Dimitri Merejkowsky <dimitri@dmerej.info>"]
+description = "Implementation of denote in Rust"
+keywords = ["notes", "denote", "cli"]
+license = "BSD-3-Clause"
+readme = "README.md"
+repository = "https://git.sr.ht/~your-tools/denote"
+
 [dependencies]
 clap = { version = "3.2.0", features = ["derive"] }
 lazy_static = "1.4.0"
