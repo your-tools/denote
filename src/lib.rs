@@ -37,160 +37,12 @@ use Error::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub struct Id(String);
-
-impl Id {
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
+fn slugify(title: &str) -> String {
+    title.to_ascii_lowercase().replace(' ', "-")
 }
 
 pub fn name_from_relative_path(relative_path: &Path) -> String {
     relative_path.to_string_lossy().replace('/', "")
-}
-
-impl FromStr for Id {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        let chars: Vec<char> = s.chars().collect();
-
-        if chars.len() != 15 {
-            return Err(ParseError(format!(
-                "value '{s}' should contain 15 characters, got {})",
-                chars.len()
-            )));
-        }
-
-        if chars[8] != 'T' {
-            return Err(ParseError(format!(
-                "value '{s}' should contain contain a 'T' in the middle, got {})",
-                chars[6]
-            )));
-        }
-
-        Ok(Self(s.to_string()))
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub struct Metadata {
-    id: Id,
-    slug: String,
-    keywords: Vec<String>,
-    extension: String,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub struct Note {
-    metadata: Metadata,
-    contents: String,
-}
-
-impl Note {
-    fn relative_path(&self) -> PathBuf {
-        let Metadata {
-            id,
-            slug,
-            keywords,
-            extension,
-        } = &self.metadata;
-        let id = id.as_str();
-        let year = &id[0..4];
-        let year_path = PathBuf::from_str(year).expect("year should be ascii");
-
-        let trailing_id = &id[4..];
-        let keywords = keywords.join("_");
-
-        let file_path =
-            PathBuf::from_str(&format!("{trailing_id}--{slug}__{keywords}.{extension}"))
-                .expect("filename should be valid utf-8");
-
-        year_path.join(file_path)
-    }
-
-    pub fn front_matter(&self) -> String {
-        serde_yaml::to_string(&self.metadata).expect("metadata should always be serializable")
-    }
-}
-
-#[derive(Debug)]
-pub struct Notes {
-    base_path: PathBuf,
-}
-
-impl Notes {
-    pub fn try_new(base_path: impl AsRef<Path>) -> Result<Self> {
-        let base_path = base_path.as_ref();
-        if !base_path.is_dir() {
-            // Note: use ErrorKind::IsADirectory when this variant is
-            // stablelized
-            return Err(IOError(format!("{base_path:#?} should be a directory")));
-        }
-        Ok(Notes {
-            base_path: base_path.to_owned(),
-        })
-    }
-
-    pub fn load(&self, relative_path: &Path) -> Result<Note> {
-        assert!(relative_path.is_relative());
-        let full_path = &self.base_path.join(relative_path);
-        let contents = std::fs::read_to_string(full_path)
-            .map_err(|e| IOError(format!("While loading note from {full_path:?}: {e}")))?;
-        let file_name = &name_from_relative_path(relative_path);
-        let metadata = parse_file_name(file_name)?;
-        Ok(Note { metadata, contents })
-    }
-
-    pub fn save(&self, note: &Note) -> Result<()> {
-        let relative_path = note.relative_path();
-        let full_path = &self.base_path.join(relative_path);
-
-        let parent_path = full_path.parent().expect("full path should have a parent");
-
-        if parent_path.exists() {
-            if parent_path.is_file() {
-                return Err(IOError(format!(
-                    "Cannot use {parent_path:?} as year path because there's a file here)"
-                )));
-            }
-        } else {
-            println!("Creating {parent_path:?}");
-            std::fs::create_dir_all(&parent_path).map_err(|e| {
-                IOError(format!(
-                    "While creating parent path {parent_path:?}for note :{e}"
-                ))
-            })?;
-        }
-
-        std::fs::write(full_path, &note.contents)
-            .map_err(|e| IOError(format!("While saving note in {full_path:?}: {e}")))?;
-        Ok(())
-    }
-}
-
-impl Metadata {
-    pub fn id(&self) -> &str {
-        self.id.as_str()
-    }
-
-    pub fn slug(&self) -> &str {
-        self.slug.as_str()
-    }
-
-    pub fn extension(&self) -> &str {
-        self.extension.as_str()
-    }
-
-    pub fn keywords(&self) -> &[String] {
-        &self.keywords
-    }
-
-    pub fn parse(front_matter: &str) -> Result<Self> {
-        serde_yaml::from_str(front_matter)
-            .map_err(|e| ParseError(format!("Could not deserialize front matter: {e})")))
-    }
 }
 
 pub fn parse_file_name(name: &str) -> Result<Metadata> {
@@ -227,9 +79,254 @@ pub fn parse_file_name(name: &str) -> Result<Metadata> {
     Ok(Metadata {
         id,
         slug,
+        title: None,
         keywords,
         extension,
     })
+}
+
+fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
+    let docs: Vec<_> = contents.splitn(3, "---\n").collect();
+    if docs.is_empty() {
+        println!("skipping empty front_matter");
+        return None;
+    }
+    if docs.len() < 2 {
+        println!("skipping invalid front_matter");
+        return None;
+    }
+    let first_doc = &docs[1];
+    let text = docs[2];
+    match FrontMatter::parse(&first_doc) {
+        Ok(f) => Some((f, text.to_string())),
+        Err(ParseError(e)) => {
+            println!("skipping invalid front_matter: {}", e);
+            None
+        }
+        Err(_) => {
+            unreachable!()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct Id(String);
+
+impl Id {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub fn human_date(&self) -> String {
+        let ymd = &self.0[0..8];
+        let hms = &self.0[9..];
+        format!("{ymd} {hms}")
+    }
+}
+
+impl FromStr for Id {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let chars: Vec<char> = s.chars().collect();
+
+        if chars.len() != 15 {
+            return Err(ParseError(format!(
+                "value '{s}' should contain 15 characters, got {})",
+                chars.len()
+            )));
+        }
+
+        if chars[8] != 'T' {
+            return Err(ParseError(format!(
+                "value '{s}' should contain contain a 'T' in the middle, got {})",
+                chars[6]
+            )));
+        }
+
+        Ok(Self(s.to_string()))
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct Metadata {
+    id: Id,
+    title: Option<String>,
+    slug: String,
+    keywords: Vec<String>,
+    extension: String,
+}
+
+impl Metadata {
+    pub fn new(id: Id, title: String, keywords: Vec<String>, extension: String) -> Metadata {
+        let slug = slugify(&title);
+        Metadata {
+            id,
+            title: Some(title.clone()),
+            slug,
+            keywords,
+            extension,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    pub fn slug(&self) -> &str {
+        self.slug.as_ref()
+    }
+
+    pub fn title(&self) -> Option<&String> {
+        self.title.as_ref()
+    }
+
+    pub fn extension(&self) -> &str {
+        self.extension.as_str()
+    }
+
+    pub fn keywords(&self) -> &[String] {
+        &self.keywords
+    }
+
+    pub fn front_matter(&self) -> FrontMatter {
+        FrontMatter {
+            title: self.title.to_owned(),
+            date: self.id.human_date(),
+            keywords: self.keywords.join(" "),
+        }
+    }
+
+    pub fn update_title(&mut self, front_matter: &FrontMatter) {
+        self.title = front_matter.title.to_owned()
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct FrontMatter {
+    title: Option<String>,
+    date: String,
+    keywords: String,
+}
+
+impl FrontMatter {
+    pub fn dump(&self) -> String {
+        serde_yaml::to_string(self).expect("front matter should always be serializable")
+    }
+
+    pub fn parse(front_matter: &str) -> Result<Self> {
+        serde_yaml::from_str(front_matter).map_err(|e| {
+            ParseError(format!(
+                "could not deserialize front matter\n{front_matter}\n{e})"
+            ))
+        })
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct Note {
+    metadata: Metadata,
+    contents: String,
+}
+
+impl Note {
+    fn relative_path(&self) -> PathBuf {
+        let Metadata {
+            id,
+            slug,
+            keywords,
+            extension,
+            ..
+        } = &self.metadata;
+        let id = id.as_str();
+        let year = &id[0..4];
+        let year_path = PathBuf::from_str(year).expect("year should be ascii");
+
+        let trailing_id = &id[4..];
+        let keywords = keywords.join("_");
+
+        let file_path =
+            PathBuf::from_str(&format!("{trailing_id}--{slug}__{keywords}.{extension}"))
+                .expect("filename should be valid utf-8");
+
+        year_path.join(file_path)
+    }
+
+    pub fn front_matter(self) -> FrontMatter {
+        self.metadata.front_matter()
+    }
+
+    pub fn dump(&self) -> String {
+        let mut res = String::new();
+        // Note: serde_yaml writes a leading `---`
+        let front_matter = self.metadata.front_matter();
+        res.push_str(&front_matter.dump());
+        res.push_str("---\n");
+        res.push_str(&self.contents);
+        res
+    }
+}
+
+#[derive(Debug)]
+pub struct Notes {
+    base_path: PathBuf,
+}
+
+impl Notes {
+    pub fn try_new(base_path: impl AsRef<Path>) -> Result<Self> {
+        let base_path = base_path.as_ref();
+        if !base_path.is_dir() {
+            // Note: use ErrorKind::IsADirectory when this variant is
+            // stablelized
+            return Err(IOError(format!("{base_path:#?} should be a directory")));
+        }
+        Ok(Notes {
+            base_path: base_path.to_owned(),
+        })
+    }
+
+    pub fn load(&self, relative_path: &Path) -> Result<Note> {
+        assert!(relative_path.is_relative());
+        let full_path = &self.base_path.join(relative_path);
+        let contents = std::fs::read_to_string(full_path)
+            .map_err(|e| IOError(format!("While loading note from {full_path:?}: {e}")))?;
+        let file_name = &name_from_relative_path(relative_path);
+        let metadata = parse_file_name(file_name)?;
+        let mut note = Note { metadata, contents };
+        if let Some((front_matter, text)) = try_extract_front_matter(&note.contents) {
+            note.metadata.title = front_matter.title.to_owned();
+            note.contents = text;
+        }
+        Ok(note)
+    }
+
+    pub fn save(&self, note: &Note) -> Result<()> {
+        let relative_path = note.relative_path();
+        let full_path = &self.base_path.join(relative_path);
+
+        let parent_path = full_path.parent().expect("full path should have a parent");
+
+        if parent_path.exists() {
+            if parent_path.is_file() {
+                return Err(IOError(format!(
+                    "Cannot use {parent_path:?} as year path because there's a file here)"
+                )));
+            }
+        } else {
+            println!("Creating {parent_path:?}");
+            std::fs::create_dir_all(&parent_path).map_err(|e| {
+                IOError(format!(
+                    "While creating parent path {parent_path:?}for note :{e}"
+                ))
+            })?;
+        }
+
+        let to_write = note.dump();
+
+        std::fs::write(full_path, &to_write)
+            .map_err(|e| IOError(format!("While saving note in {full_path:?}: {e}")))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -241,12 +338,14 @@ mod tests {
 
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
-        let slug = "this-is-a-slug".to_owned();
+        let slug = "this-is-a-title".to_owned();
+        let title = Some("This is a title".to_owned());
         let keywords = vec!["k1".to_owned(), "k2".to_owned()];
         let extension = "md".to_owned();
         let metadata = Metadata {
             id,
             slug,
+            title,
             keywords,
             extension,
         };
@@ -258,13 +357,24 @@ mod tests {
     }
 
     #[test]
+    fn test_slugify_title_when_creating_metadata() {
+        let id = Id::from_str("20220707T142708").unwrap();
+        let title = "This is a title".to_owned();
+        let keywords = vec!["k1".to_owned(), "k2".to_owned()];
+        let extension = "md".to_owned();
+        let metadata = Metadata::new(id, title, keywords, extension);
+
+        assert_eq!(metadata.slug(), "this-is-a-title");
+    }
+
+    #[test]
     fn test_parse_metadata_from_file_name() {
-        let name = "20220707T142708--this-is-a-slug__k1_k2.md";
+        let name = "20220707T142708--this-is-a-title__k1_k2.md";
 
         let metadata = parse_file_name(name).unwrap();
 
         assert_eq!(metadata.id(), "20220707T142708");
-        assert_eq!(metadata.slug(), "this-is-a-slug");
+        assert_eq!(metadata.slug(), "this-is-a-title");
         assert_eq!(metadata.extension(), "md");
         assert_eq!(metadata.keywords(), &["k1", "k2"]);
     }
@@ -274,7 +384,7 @@ mod tests {
         let note = make_note();
         assert_eq!(
             note.relative_path().to_string_lossy(),
-            "2022/0707T142708--this-is-a-slug__k1_k2.md"
+            "2022/0707T142708--this-is-a-title__k1_k2.md"
         );
     }
 
@@ -301,9 +411,17 @@ mod tests {
     #[test]
     fn test_generating_front_matter() {
         let note = make_note();
-        let original = &note.metadata;
-        let front_matter = &note.front_matter();
-        let parsed = &Metadata::parse(front_matter).unwrap();
-        assert_eq!(parsed, original);
+        let original = note.front_matter();
+        let dumped = original.dump();
+
+        let parsed = FrontMatter::parse(&dumped).unwrap();
+        assert_eq!(&parsed.title, &original.title);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_load_front_matter_from_contents() {
+        let note = make_note();
+        let _contents = note.dump();
     }
 }
