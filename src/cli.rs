@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 use time::macros::format_description;
 use time::OffsetDateTime;
 
-use crate::{IOError, NotesRepository};
+use crate::{NotesRepository, OSError};
 
 pub fn new_note(base_path: &Path) -> Result<()> {
     let now = OffsetDateTime::now_utc();
@@ -23,23 +23,25 @@ keywords:
     let temp_dir = tempfile::Builder::new()
         .prefix("tmp-denotes")
         .tempdir()
-        .map_err(|e| IOError(format!("Could not create temporary directory: {e}")))?;
+        .map_err(|e| OSError(format!("Could not create temporary directory: {e}")))?;
 
     let note_path = temp_dir.path().join("note.md");
     std::fs::write(&note_path, template)
-        .map_err(|e| IOError(format!("Could not create makdown file: {e}")))?;
+        .map_err(|e| OSError(format!("Could not create makdown file: {e}")))?;
 
-    let status = Command::new("kak")
+    let editor = std::env::var("EDITOR").map_err(|_| OSError("EDITOR should be set".to_string()))?;
+
+    let status = Command::new(&editor)
         .args([&note_path.as_os_str()])
         .status()
-        .map_err(|e| IOError(format!("Could not spawn kakoune: {e}")))?;
+        .map_err(|e| OSError(format!("Could not spawn {editor}: {e}")))?;
 
     if !status.success() {
-        return Err(IOError("kakoune did not exit sucessfully".to_string()))?;
+        return Err(OSError("editor did not exit sucessfully".to_string()))?;
     }
     if !&note_path.exists() {
-        return Err(IOError(
-            "kakoune exited successfuly but no file was written".to_string(),
+        return Err(OSError(
+            "editor exited successfuly but no file was written".to_string(),
         ))?;
     }
 

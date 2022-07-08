@@ -33,8 +33,8 @@ lazy_static! {
 pub enum Error {
     #[error("parse error")]
     ParseError(String),
-    #[error("io error")]
-    IOError(String),
+    #[error("os error")]
+    OSError(String),
 }
 
 use Error::*;
@@ -51,7 +51,7 @@ pub fn name_from_relative_path(relative_path: &Path) -> String {
 
 pub fn parse_file_name(name: &str) -> Result<Metadata> {
     let captures = FILENAME_RE.captures(name).ok_or_else(|| {
-        ParseError(format!("Filename {name} did not match expected regex").to_string())
+        ParseError(format!("Filename {name} did not match expected regex"))
     })?;
 
     let id = captures
@@ -101,7 +101,7 @@ pub fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)>
     }
     let first_doc = &docs[1];
     let text = docs[2];
-    match FrontMatter::parse(&first_doc) {
+    match FrontMatter::parse(first_doc) {
         Ok(f) => Some((f, text.to_string())),
         Err(ParseError(e)) => {
             println!("skipping invalid front_matter: {}", e);
@@ -172,7 +172,7 @@ impl Metadata {
         let slug = slugify(&title);
         Metadata {
             id,
-            title: Some(title.clone()),
+            title: Some(title),
             slug,
             keywords,
             extension,
@@ -248,7 +248,7 @@ impl FrontMatter {
     }
 
     pub fn keywords(&self) -> Vec<String> {
-        self.keywords.split(" ").map(|x| x.to_string()).collect()
+        self.keywords.split(' ').map(|x| x.to_string()).collect()
     }
 
     pub fn dump(&self) -> String {
@@ -300,12 +300,16 @@ pub struct NotesRepository {
 }
 
 impl NotesRepository {
+    /// Open a new repository given a base_path
+    /// Base path should contain one folder per year,
+    /// and the filename in each `<year>`` folder should match
+    /// the denote naming convention
     pub fn open(base_path: impl AsRef<Path>) -> Result<Self> {
         let base_path = base_path.as_ref();
         if !base_path.is_dir() {
             // Note: use ErrorKind::IsADirectory when this variant is
             // stablelized
-            return Err(IOError(format!("{base_path:#?} should be a directory")));
+            return Err(OSError(format!("{base_path:#?} should be a directory")));
         }
         Ok(NotesRepository {
             base_path: base_path.to_owned(),
@@ -313,11 +317,10 @@ impl NotesRepository {
     }
 
     /// Import a plain md file and save it with the correct name
-    /// Usually, the file will be a temporary one, edited with kakoune,
-    /// like with cli::new_nowe
+    /// Called by cli::new_note
     pub fn import_from_markdown(&self, markdown_path: &Path) -> Result<()> {
         let contents = std::fs::read_to_string(markdown_path)
-            .map_err(|e| Error::IOError(format!("while reading: {markdown_path:#?}: {e}")))?;
+            .map_err(|e| Error::OSError(format!("while reading: {markdown_path:#?}: {e}")))?;
         let (front_matter, text) = try_extract_front_matter(&contents).ok_or_else(|| {
             Error::ParseError(format!(
                 "Could not extract front matter from {markdown_path:#?}"
@@ -340,19 +343,20 @@ impl NotesRepository {
     }
 
     /// To be called when the markdown file has changed - this will
-    /// handle the rename automaticall
+    /// handle the rename automatically - note that the ID won't change,
+    /// this is by design
     pub fn on_update(&self, relative_path: &Path) -> Result<()> {
         let full_path = &self.base_path.join(relative_path);
-        let name = name_from_relative_path(&relative_path);
+        let name = name_from_relative_path(relative_path);
         let metadata = parse_file_name(&name).map_err(|e| {
-            Error::IOError(format!(
+            Error::OSError(format!(
                 "While updating {full_path:#?}, could not parse file name: {e}"
             ))
         })?;
         let id = metadata.id;
 
         let contents = std::fs::read_to_string(full_path)
-            .map_err(|e| Error::IOError(format!("while reading: {full_path:#?}: {e}")))?;
+            .map_err(|e| Error::OSError(format!("while reading: {full_path:#?}: {e}")))?;
         let (new_front_matter, _) = try_extract_front_matter(&contents).ok_or_else(|| {
             Error::ParseError(format!(
                 "Could not extract front matter from {full_path:#?}"
@@ -370,17 +374,18 @@ impl NotesRepository {
         if full_path != new_full_path {
             println!("{full_path:#?} -> {new_full_path:#?}");
             std::fs::rename(full_path, new_full_path)
-                .map_err(|e| Error::IOError(format!("Could not rename note: {e}")))?;
+                .map_err(|e| Error::OSError(format!("Could not rename note: {e}")))?;
         }
 
         Ok(())
     }
 
+    /// Load a note file
     pub fn load(&self, relative_path: &Path) -> Result<Note> {
         assert!(relative_path.is_relative());
         let full_path = &self.base_path.join(relative_path);
         let contents = std::fs::read_to_string(full_path)
-            .map_err(|e| IOError(format!("While loading note from {full_path:?}: {e}")))?;
+            .map_err(|e| OSError(format!("While loading note from {full_path:?}: {e}")))?;
         let file_name = &name_from_relative_path(relative_path);
         let metadata = parse_file_name(file_name)?;
         let mut note = Note {
@@ -388,12 +393,14 @@ impl NotesRepository {
             text: contents,
         };
         if let Some((front_matter, text)) = try_extract_front_matter(&note.text) {
-            note.metadata.title = front_matter.title.to_owned();
+            note.metadata.title = front_matter.title;
             note.text = text;
         }
         Ok(note)
     }
 
+    /// Save a note in the repository
+    /// Create `<year>` directory when needed
     pub fn save(&self, note: &Note) -> Result<()> {
         let relative_path = note.relative_path();
         let full_path = &self.base_path.join(relative_path);
@@ -402,14 +409,14 @@ impl NotesRepository {
 
         if parent_path.exists() {
             if parent_path.is_file() {
-                return Err(IOError(format!(
+                return Err(OSError(format!(
                     "Cannot use {parent_path:?} as year path because there's a file here)"
                 )));
             }
         } else {
             println!("Creating {parent_path:?}");
             std::fs::create_dir_all(&parent_path).map_err(|e| {
-                IOError(format!(
+                OSError(format!(
                     "While creating parent path {parent_path:?}for note :{e}"
                 ))
             })?;
@@ -418,7 +425,7 @@ impl NotesRepository {
         let to_write = note.dump();
 
         std::fs::write(full_path, &to_write)
-            .map_err(|e| IOError(format!("While saving note in {full_path:?}: {e}")))?;
+            .map_err(|e| OSError(format!("While saving note in {full_path:?}: {e}")))?;
         println!("Note saved in {full_path:#?}");
         Ok(())
     }
@@ -429,7 +436,7 @@ mod tests {
 
     use super::*;
 
-    use tempfile;
+    
 
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
