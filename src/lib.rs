@@ -55,7 +55,7 @@ fn name_from_relative_path(relative_path: &Path) -> String {
 
 fn parse_file_name(name: &str) -> Result<Metadata> {
     let captures = FILENAME_RE.captures(name).ok_or_else(|| {
-        ParseError(format!("Filename {name} did not match expected regex").to_string())
+        ParseError(format!("Filename {name} did not match expected regex"))
     })?;
 
     let id = captures
@@ -105,7 +105,7 @@ fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
     }
     let first_doc = &docs[1];
     let text = docs[2];
-    match FrontMatter::parse(&first_doc) {
+    match FrontMatter::parse(first_doc) {
         Ok(f) => Some((f, text.to_string())),
         Err(ParseError(e)) => {
             println!("skipping invalid front_matter: {}", e);
@@ -183,7 +183,7 @@ impl Metadata {
         let slug = slugify(&title);
         Metadata {
             id,
-            title: Some(title.clone()),
+            title: Some(title),
             slug,
             keywords,
             extension,
@@ -265,7 +265,7 @@ impl FrontMatter {
     }
 
     pub fn keywords(&self) -> Vec<String> {
-        self.keywords.split(" ").map(|x| x.to_string()).collect()
+        self.keywords.split(' ').map(|x| x.to_string()).collect()
     }
 
     pub fn dump(&self) -> String {
@@ -374,7 +374,7 @@ impl NotesRepository {
     /// this is by design
     pub fn on_update(&self, relative_path: &Path) -> Result<()> {
         let full_path = &self.base_path.join(relative_path);
-        let name = name_from_relative_path(&relative_path);
+        let name = name_from_relative_path(relative_path);
         let metadata = parse_file_name(&name).map_err(|e| {
             Error::OSError(format!(
                 "While updating {full_path:#?}, could not parse file name: {e}"
@@ -420,7 +420,7 @@ impl NotesRepository {
             text: contents,
         };
         if let Some((front_matter, text)) = try_extract_front_matter(&note.text) {
-            note.metadata.title = front_matter.title.to_owned();
+            note.metadata.title = front_matter.title;
             note.text = text;
         }
         Ok(note)
@@ -463,7 +463,7 @@ mod tests {
 
     use super::*;
 
-    use tempfile;
+    
 
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
