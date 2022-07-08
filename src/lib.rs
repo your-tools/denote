@@ -44,17 +44,17 @@ use Error::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn slugify(title: &str) -> String {
+fn slugify(title: &str) -> String {
     title.to_ascii_lowercase().replace(' ', "-")
 }
 
-pub fn name_from_relative_path(relative_path: &Path) -> String {
+fn name_from_relative_path(relative_path: &Path) -> String {
     relative_path.to_string_lossy().replace('/', "")
 }
 
-pub fn parse_file_name(name: &str) -> Result<Metadata> {
+fn parse_file_name(name: &str) -> Result<Metadata> {
     let captures = FILENAME_RE.captures(name).ok_or_else(|| {
-        ParseError(format!("Filename {name} did not match expected regex"))
+        ParseError(format!("Filename {name} did not match expected regex").to_string())
     })?;
 
     let id = captures
@@ -92,7 +92,7 @@ pub fn parse_file_name(name: &str) -> Result<Metadata> {
     })
 }
 
-pub fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
+fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
     let docs: Vec<_> = contents.splitn(3, "---\n").collect();
     if docs.is_empty() {
         println!("skipping empty front_matter");
@@ -104,7 +104,7 @@ pub fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)>
     }
     let first_doc = &docs[1];
     let text = docs[2];
-    match FrontMatter::parse(first_doc) {
+    match FrontMatter::parse(&first_doc) {
         Ok(f) => Some((f, text.to_string())),
         Err(ParseError(e)) => {
             println!("skipping invalid front_matter: {}", e);
@@ -182,7 +182,7 @@ impl Metadata {
         let slug = slugify(&title);
         Metadata {
             id,
-            title: Some(title),
+            title: Some(title.clone()),
             slug,
             keywords,
             extension,
@@ -264,7 +264,7 @@ impl FrontMatter {
     }
 
     pub fn keywords(&self) -> Vec<String> {
-        self.keywords.split(' ').map(|x| x.to_string()).collect()
+        self.keywords.split(" ").map(|x| x.to_string()).collect()
     }
 
     pub fn dump(&self) -> String {
@@ -314,6 +314,7 @@ impl Note {
 }
 
 #[derive(Debug)]
+/// Store the notes with the proper file names inside a `base_path`
 pub struct NotesRepository {
     base_path: PathBuf,
 }
@@ -333,6 +334,12 @@ impl NotesRepository {
         Ok(NotesRepository {
             base_path: base_path.to_owned(),
         })
+    }
+
+    /// The base path of the repository, where the `<year>` directories
+    /// are created
+    pub fn base_path(&self) -> &Path {
+        &self.base_path
     }
 
     /// Import a plain md file and save it with the correct name
@@ -366,7 +373,7 @@ impl NotesRepository {
     /// this is by design
     pub fn on_update(&self, relative_path: &Path) -> Result<()> {
         let full_path = &self.base_path.join(relative_path);
-        let name = name_from_relative_path(relative_path);
+        let name = name_from_relative_path(&relative_path);
         let metadata = parse_file_name(&name).map_err(|e| {
             Error::OSError(format!(
                 "While updating {full_path:#?}, could not parse file name: {e}"
@@ -412,7 +419,7 @@ impl NotesRepository {
             text: contents,
         };
         if let Some((front_matter, text)) = try_extract_front_matter(&note.text) {
-            note.metadata.title = front_matter.title;
+            note.metadata.title = front_matter.title.to_owned();
             note.text = text;
         }
         Ok(note)
@@ -455,7 +462,7 @@ mod tests {
 
     use super::*;
 
-    
+    use tempfile;
 
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
