@@ -47,7 +47,7 @@ pub fn name_from_relative_path(relative_path: &Path) -> String {
 
 pub fn parse_file_name(name: &str) -> Result<Metadata> {
     let captures = FILENAME_RE.captures(name).ok_or_else(|| {
-        ParseError(format!("Filename {name} did not match expected regex").to_string())
+        ParseError(format!("Filename {name} did not match expected regex"))
     })?;
 
     let id = captures
@@ -97,7 +97,7 @@ fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
     }
     let first_doc = &docs[1];
     let text = docs[2];
-    match FrontMatter::parse(&first_doc) {
+    match FrontMatter::parse(first_doc) {
         Ok(f) => Some((f, text.to_string())),
         Err(ParseError(e)) => {
             println!("skipping invalid front_matter: {}", e);
@@ -162,7 +162,7 @@ impl Metadata {
         let slug = slugify(&title);
         Metadata {
             id,
-            title: Some(title.clone()),
+            title: Some(title),
             slug,
             keywords,
             extension,
@@ -294,7 +294,7 @@ impl Notes {
         let metadata = parse_file_name(file_name)?;
         let mut note = Note { metadata, contents };
         if let Some((front_matter, text)) = try_extract_front_matter(&note.contents) {
-            note.metadata.title = front_matter.title.to_owned();
+            note.metadata.title = front_matter.title;
             note.contents = text;
         }
         Ok(note)
@@ -334,7 +334,7 @@ mod tests {
 
     use super::*;
 
-    use tempfile;
+    
 
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
