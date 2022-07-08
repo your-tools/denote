@@ -15,7 +15,7 @@ Because I can!
 Also Rust may be a better language to built tools on top of it than Lisp
 
 For instance, it should be easy to provide Python or Javascript implementations
-of denotes.
+of denotes based on this repo.
 
 ## Command line usage
 
