@@ -295,19 +295,19 @@ impl Note {
 }
 
 #[derive(Debug)]
-pub struct Notes {
+pub struct NotesRepository {
     base_path: PathBuf,
 }
 
-impl Notes {
-    pub fn try_new(base_path: impl AsRef<Path>) -> Result<Self> {
+impl NotesRepository {
+    pub fn open(base_path: impl AsRef<Path>) -> Result<Self> {
         let base_path = base_path.as_ref();
         if !base_path.is_dir() {
             // Note: use ErrorKind::IsADirectory when this variant is
             // stablelized
             return Err(IOError(format!("{base_path:#?} should be a directory")));
         }
-        Ok(Notes {
+        Ok(NotesRepository {
             base_path: base_path.to_owned(),
         })
     }
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_error_when_trying_to_load_notes_from_a_file() {
-        Notes::try_new("src/lib.rs").unwrap_err();
+        NotesRepository::open("src/lib.rs").unwrap_err();
     }
 
     #[test]
@@ -494,7 +494,7 @@ mod tests {
             .prefix("test-denotes")
             .tempdir()
             .unwrap();
-        let notes = Notes::try_new(&temp_dir).unwrap();
+        let notes = NotesRepository::open(&temp_dir).unwrap();
         let note = make_note();
         notes.save(&note).unwrap();
 

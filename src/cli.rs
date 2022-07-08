@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 use time::macros::format_description;
 use time::OffsetDateTime;
 
-use crate::{IOError, Notes};
+use crate::{IOError, NotesRepository};
 
 pub fn new_note(base_path: &Path) -> Result<()> {
     let now = OffsetDateTime::now_utc();
@@ -43,7 +43,7 @@ keywords:
         ))?;
     }
 
-    let notes = Notes::try_new(&base_path)?;
+    let notes = NotesRepository::open(&base_path)?;
 
     notes.import_from_markdown(&note_path)
 }
