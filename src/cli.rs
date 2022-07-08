@@ -39,7 +39,7 @@ keywords:
     }
     if !&note_path.exists() {
         return Err(IOError(
-            "kak exited successfuly but no file was written".to_string(),
+            "kakoune exited successfuly but no file was written".to_string(),
         ))?;
     }
 

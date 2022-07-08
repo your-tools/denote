@@ -210,6 +210,29 @@ impl Metadata {
     pub fn update_title(&mut self, front_matter: &FrontMatter) {
         self.title = front_matter.title.to_owned()
     }
+
+    pub fn relative_path(&self) -> PathBuf {
+        let Metadata {
+            id,
+            keywords,
+            slug,
+            extension,
+            ..
+        } = self;
+
+        let id = id.as_str();
+        let year = &id[0..4];
+        let year_path = PathBuf::from_str(year).expect("year should be ascii");
+
+        let trailing_id = &id[4..];
+        let keywords = keywords.join("_");
+
+        let file_path =
+            PathBuf::from_str(&format!("{trailing_id}--{slug}__{keywords}.{extension}"))
+                .expect("filename should be valid utf-8");
+
+        year_path.join(file_path)
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -253,25 +276,7 @@ impl Note {
     }
 
     fn relative_path(&self) -> PathBuf {
-        let Metadata {
-            id,
-            slug,
-            keywords,
-            extension,
-            ..
-        } = &self.metadata;
-        let id = id.as_str();
-        let year = &id[0..4];
-        let year_path = PathBuf::from_str(year).expect("year should be ascii");
-
-        let trailing_id = &id[4..];
-        let keywords = keywords.join("_");
-
-        let file_path =
-            PathBuf::from_str(&format!("{trailing_id}--{slug}__{keywords}.{extension}"))
-                .expect("filename should be valid utf-8");
-
-        year_path.join(file_path)
+        self.metadata.relative_path()
     }
 
     pub fn front_matter(self) -> FrontMatter {
@@ -307,6 +312,9 @@ impl Notes {
         })
     }
 
+    /// Import a plain md file and save it with the correct name
+    /// Usually, the file will be a temporary one, edited with kakoune,
+    /// like with cli::new_nowe
     pub fn import_from_markdown(&self, markdown_path: &Path) -> Result<()> {
         let contents = std::fs::read_to_string(markdown_path)
             .map_err(|e| Error::IOError(format!("while reading: {markdown_path:#?}: {e}")))?;
@@ -329,6 +337,43 @@ impl Notes {
 
         let note = Note::new(metadata, text);
         self.save(&note)
+    }
+
+    /// To be called when the markdown file has changed - this will
+    /// handle the rename automaticall
+    pub fn on_update(&self, relative_path: &Path) -> Result<()> {
+        let full_path = &self.base_path.join(relative_path);
+        let name = name_from_relative_path(&relative_path);
+        let metadata = parse_file_name(&name).map_err(|e| {
+            Error::IOError(format!(
+                "While updating {full_path:#?}, could not parse file name: {e}"
+            ))
+        })?;
+        let id = metadata.id;
+
+        let contents = std::fs::read_to_string(full_path)
+            .map_err(|e| Error::IOError(format!("while reading: {full_path:#?}: {e}")))?;
+        let (new_front_matter, _) = try_extract_front_matter(&contents).ok_or_else(|| {
+            Error::ParseError(format!(
+                "Could not extract front matter from {full_path:#?}"
+            ))
+        })?;
+        let new_title = match new_front_matter.title() {
+            None => return Ok(()),
+            Some(s) => s,
+        };
+        let new_keywords: Vec<_> = new_front_matter.keywords();
+        let new_metada = Metadata::new(id, new_title.to_owned(), new_keywords, "md".to_owned());
+        let new_relative_path = new_metada.relative_path();
+        let new_full_path = &self.base_path.join(&new_relative_path);
+
+        if full_path != new_full_path {
+            println!("{full_path:#?} -> {new_full_path:#?}");
+            std::fs::rename(full_path, new_full_path)
+                .map_err(|e| Error::IOError(format!("Could not rename note: {e}")))?;
+        }
+
+        Ok(())
     }
 
     pub fn load(&self, relative_path: &Path) -> Result<Note> {
