@@ -25,6 +25,17 @@ See:
 cargo run -- --help
 ```
 
+## Python bindings
+
+To use the python bindings, make sure you can build the Rust code, then install
+poetry and run:
+
+```basd
+poetry install
+poetry run maturin develop
+```
+
+
 ## Kakoune integration
 
 Work in progress
