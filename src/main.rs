@@ -39,7 +39,7 @@ fn main() -> Result<()> {
                     eprintln!("repository and update paths should be relative to each other");
                     std::process::exit(1);
                 })?;
-            notes.on_update(&relative_path)?;
+            notes.update(&relative_path)?;
             Ok(())
         }
     }

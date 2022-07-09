@@ -212,6 +212,13 @@ impl Note {
         }
     }
 
+    #[getter]
+    fn metadata(&self) -> Metadata {
+        Metadata {
+            _inner: self._inner.metadata().clone(),
+        }
+    }
+
     pub fn dump(&self) -> String {
         self._inner.dump()
     }
@@ -258,7 +265,7 @@ impl NotesRepository {
 
     fn on_update(&self, relative_path: &PyAny) -> PyResult<PyObject> {
         let as_path = PathBuf::from_str(&relative_path.to_string())?;
-        let new_path = unwrap(self._inner.on_update(&as_path))?;
+        let new_path = unwrap(self._inner.update(&as_path))?;
         path_buf_to_pathlib(new_path)
     }
 

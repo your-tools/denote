@@ -122,7 +122,7 @@ def test_markdown_import(tmp_path):
     assert actual_without_date == expected_without_date
 
 
-def test_renaming_note_on_update(tmp_path):
+def test_loading_and_saving(tmp_path):
     id = Id("20220707T142708")
     metadata = Metadata(id, "This is a title", ["k1", "k2"], "md")
     text = "this is my note\n"
@@ -133,3 +133,41 @@ def test_renaming_note_on_update(tmp_path):
     relative_path = notes_repository.save(note)
 
     notes_repository.load(relative_path)
+
+
+def test_update_note_path_when_title_changes(tmp_path):
+    id = Id("20220707T142708")
+    metadata = Metadata(id, "old title", ["k1", "k2"], "md")
+    text = "this is my note\n"
+
+    note = Note(text=text, metadata=metadata)
+    assert "--old-title" in note.relative_path
+
+    notes_repository = NotesRepository.open(tmp_path)
+    relative_path = notes_repository.save(note)
+
+    contents = (tmp_path / relative_path).read_text()
+    (tmp_path / relative_path).write_text(contents.replace("old title", "new title"))
+
+    note = notes_repository.load(relative_path)
+    notes_repository.save(note)
+    assert "--new-title" in note.relative_path
+
+
+def test_update_note_path_when_keywords_change(tmp_path):
+    id = Id("20220707T142708")
+    metadata = Metadata(id, "title", ["k1", "k2"], "md")
+    text = "this is my note\n"
+
+    note = Note(text=text, metadata=metadata)
+    assert "__k1_k2" in note.relative_path
+
+    notes_repository = NotesRepository.open(tmp_path)
+    relative_path = notes_repository.save(note)
+
+    contents = (tmp_path / relative_path).read_text()
+    (tmp_path / relative_path).write_text(contents.replace("k1 k2", "tag1 tag2"))
+
+    note = notes_repository.load(relative_path)
+    notes_repository.save(note)
+    assert "__tag1_tag2" in note.relative_path

@@ -310,6 +310,20 @@ impl Note {
         self.metadata.front_matter()
     }
 
+    pub fn update(&mut self, front_matter: &FrontMatter) {
+        if let Some(new_title) = &front_matter.title {
+            self.metadata.title = Some(new_title.to_string());
+            let new_slug = slugify(&new_title);
+            self.metadata.slug = new_slug;
+        }
+        let new_keywords: Vec<_> = front_matter.keywords();
+        self.metadata.keywords = new_keywords;
+    }
+
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
     pub fn dump(&self) -> String {
         let mut res = String::new();
         // Note: serde_yaml writes a leading `---`
@@ -381,33 +395,13 @@ impl NotesRepository {
     /// To be called when the markdown file has changed - this will
     /// handle the rename automatically - note that the ID won't change,
     /// this is by design
-    /// Return the new note path (which may hve changed)
-    pub fn on_update(&self, relative_path: &Path) -> Result<PathBuf> {
+    /// Return the new note path (which may have changed)
+    pub fn update(&self, relative_path: &Path) -> Result<PathBuf> {
         let full_path = &self.base_path.join(relative_path);
-        let name = name_from_relative_path(relative_path);
-        let metadata = parse_file_name(&name).map_err(|e| {
-            Error::OSError(format!(
-                "While updating {full_path:#?}, could not parse file name: {e}"
-            ))
-        })?;
-        let id = metadata.id;
+        let note = self.load(relative_path)?;
 
-        let contents = std::fs::read_to_string(full_path)
-            .map_err(|e| Error::OSError(format!("while reading: {full_path:#?}: {e}")))?;
-        let (new_front_matter, _) = try_extract_front_matter(&contents).ok_or_else(|| {
-            Error::ParseError(format!(
-                "Could not extract front matter from {full_path:#?}"
-            ))
-        })?;
-        let new_title = match new_front_matter.title() {
-            None => return Ok(full_path.to_path_buf()),
-            Some(s) => s,
-        };
-        let new_keywords: Vec<_> = new_front_matter.keywords();
-        let new_metada = Metadata::new(id, new_title.to_owned(), new_keywords, "md".to_owned());
-        let new_relative_path = new_metada.relative_path();
+        let new_relative_path = note.relative_path();
         let new_full_path = &self.base_path.join(&new_relative_path);
-
         if full_path != new_full_path {
             println!("{full_path:#?} -> {new_full_path:#?}");
             std::fs::rename(full_path, new_full_path)
@@ -434,7 +428,7 @@ impl NotesRepository {
             text: contents,
         };
         if let Some((front_matter, text)) = try_extract_front_matter(&note.text) {
-            note.metadata.title = front_matter.title;
+            note.update(&front_matter);
             note.text = text;
         }
         Ok(note)
@@ -467,7 +461,6 @@ impl NotesRepository {
 
         std::fs::write(full_path, &to_write)
             .map_err(|e| OSError(format!("While saving note in {full_path:?}: {e}")))?;
-        println!("Note saved in {full_path:#?}");
         Ok(relative_path.to_path_buf())
     }
 }
