@@ -310,6 +310,7 @@ impl Note {
         self.metadata.front_matter()
     }
 
+    /// Update the metadata when the front matter changes
     pub fn update(&mut self, front_matter: &FrontMatter) {
         if let Some(new_title) = &front_matter.title {
             self.metadata.title = Some(new_title.to_string());
