@@ -253,7 +253,7 @@ impl Metadata {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Deserialize, Serialize)]
 /// The front matter of a note.
 /// Currently using YAML
 /// Note that `keywords` is list of words separated by spaces,
