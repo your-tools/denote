@@ -53,7 +53,16 @@ fn slugify(title: &str) -> String {
 }
 
 fn name_from_relative_path(relative_path: &Path) -> String {
-    relative_path.to_string_lossy().replace('/', "")
+    let components: Vec<_> = relative_path.components().collect();
+    assert!(
+        components.len() >= 2,
+        "relative path should look like <year>/<id>"
+    );
+    let last: &Path = components
+        .last()
+        .expect("components cannot be empty")
+        .as_ref();
+    last.to_string_lossy().into_owned()
 }
 
 fn parse_file_name(name: &str) -> Result<Metadata> {
@@ -242,12 +251,10 @@ impl Metadata {
         let year = &id[0..4];
         let year_path = PathBuf::from_str(year).expect("year should be ascii");
 
-        let trailing_id = &id[4..];
         let keywords = keywords.join("_");
 
-        let file_path =
-            PathBuf::from_str(&format!("{trailing_id}--{slug}__{keywords}.{extension}"))
-                .expect("filename should be valid utf-8");
+        let file_path = PathBuf::from_str(&format!("{id}--{slug}__{keywords}.{extension}"))
+            .expect("filename should be valid utf-8");
 
         year_path.join(file_path)
     }
@@ -519,7 +526,7 @@ mod tests {
         let note = make_note();
         assert_eq!(
             note.relative_path().to_string_lossy(),
-            "2022/0707T142708--this-is-a-title__k1_k2.md"
+            "2022/20220707T142708--this-is-a-title__k1_k2.md"
         );
     }
 

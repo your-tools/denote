@@ -33,7 +33,7 @@ def test_can_build_a_metadata_instance():
     assert metadata.title == "This is a title"
     assert metadata.keywords == ["k1", "k2"]
     assert metadata.extension == "md"
-    assert metadata.relative_path == "2022/0707T142708--this-is-a-title__k1_k2.md"
+    assert metadata.relative_path == "2022/20220707T142708--this-is-a-title__k1_k2.md"
 
 
 def test_can_parse_front_matter():
