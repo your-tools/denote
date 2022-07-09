@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Note: symlink me in .git/hooks/pre-push if you want
+# to avoid pushing "bad" code
+
+set -e
+set -x
+
+remote="$1"
+url="$2"
+
+z40=0000000000000000000000000000000000000000
+
+while read local_ref local_sha remote_ref remote_sha
+do
+  if [[ "${local_sha}" = $z40 ]]; then
+    echo "Deleting stuff, nothing to do"
+  else
+    cargo clippy
+    cargo nextest run
+    poetry run maturin develop --release
+    poetry run pytest python/test_denote.py
+  fi
+done
+
+exit 0
