@@ -283,7 +283,6 @@ impl NotesRepository {
 
 #[pymodule]
 fn denote(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(add, m)?)?;
     m.add_function(wrap_pyfunction!(slugify, m)?)?;
     m.add_class::<Id>()?;
     m.add_class::<Metadata>()?;
