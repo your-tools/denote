@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "denote"
+version = "0.1.0"
+description = "denote"
+authors = ["Dimitri Merejkowsky <dimitri@dmerej.info>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.2"
+maturin = "^0.12.20"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

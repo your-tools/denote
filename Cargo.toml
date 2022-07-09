@@ -10,10 +10,15 @@ license = "BSD-3-Clause"
 readme = "README.md"
 repository = "https://git.sr.ht/~your-tools/denote"
 
+[lib]
+name = "denote"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 clap = { version = "3.2.0", features = ["derive"] }
 lazy_static = "1.4.0"
 pathdiff = "0.2.1"
+pyo3 = { version = "0.16.5", features = ["extension-module"] }
 regex = "1.6.0"
 serde = {version = "1.0", features = ["derive"]}
 serde_yaml = "0.8.24"
@@ -22,3 +27,4 @@ thiserror = "1.0.31"
 time = { version = "0.3.11", features = ["std", "formatting", "macros"] }
 
 [dev-dependencies]
+

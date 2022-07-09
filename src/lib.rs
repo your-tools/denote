@@ -13,6 +13,9 @@ use time::OffsetDateTime;
 /// Tools for command-line usage
 pub mod cli;
 
+/// Python bindings
+mod python;
+
 lazy_static! {
     static ref FILENAME_RE: Regex = RegexBuilder::new(
         r"
@@ -54,9 +57,9 @@ fn name_from_relative_path(relative_path: &Path) -> String {
 }
 
 fn parse_file_name(name: &str) -> Result<Metadata> {
-    let captures = FILENAME_RE.captures(name).ok_or_else(|| {
-        ParseError(format!("Filename {name} did not match expected regex"))
-    })?;
+    let captures = FILENAME_RE
+        .captures(name)
+        .ok_or_else(|| ParseError(format!("Filename {name} did not match expected regex")))?;
 
     let id = captures
         .get(1)
@@ -462,8 +465,6 @@ impl NotesRepository {
 mod tests {
 
     use super::*;
-
-    
 
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
