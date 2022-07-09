@@ -48,10 +48,6 @@ use Error::*;
 /// Result type for this library
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn slugify(title: &str) -> String {
-    title.to_ascii_lowercase().replace(' ', "-")
-}
-
 fn name_from_relative_path(relative_path: &Path) -> String {
     let components: Vec<_> = relative_path.components().collect();
     assert!(
@@ -200,7 +196,7 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn new(id: Id, title: String, keywords: Vec<String>, extension: String) -> Metadata {
-        let slug = slugify(&title);
+        let slug = slug::slugify(&title);
         Metadata {
             id,
             title: Some(title),
@@ -321,7 +317,7 @@ impl Note {
     pub fn update(&mut self, front_matter: &FrontMatter) {
         if let Some(new_title) = &front_matter.title {
             self.metadata.title = Some(new_title.to_string());
-            let new_slug = slugify(new_title);
+            let new_slug = slug::slugify(new_title);
             self.metadata.slug = new_slug;
         }
         let new_keywords: Vec<_> = front_matter.keywords();

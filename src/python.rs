@@ -32,7 +32,7 @@ fn path_buf_to_pathlib(path_buf: PathBuf) -> PyResult<PyObject> {
 
 #[pyfunction]
 fn slugify(title: &str) -> PyResult<String> {
-    Ok(crate::slugify(title))
+    Ok(slug::slugify(title))
 }
 
 #[pyclass]

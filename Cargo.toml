@@ -22,6 +22,7 @@ pyo3 = { version = "0.16.5", features = ["extension-module"] }
 regex = "1.6.0"
 serde = {version = "1.0", features = ["derive"]}
 serde_yaml = "0.8.24"
+slug = "0.1.4"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 time = { version = "0.3.11", features = ["std", "formatting", "macros"] }
