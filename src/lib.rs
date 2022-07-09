@@ -314,7 +314,7 @@ impl Note {
     pub fn update(&mut self, front_matter: &FrontMatter) {
         if let Some(new_title) = &front_matter.title {
             self.metadata.title = Some(new_title.to_string());
-            let new_slug = slugify(&new_title);
+            let new_slug = slugify(new_title);
             self.metadata.slug = new_slug;
         }
         let new_keywords: Vec<_> = front_matter.keywords();
@@ -390,7 +390,7 @@ impl NotesRepository {
         let note = Note::new(metadata, text);
         self.save(&note)?;
 
-        Ok(note.relative_path().to_path_buf())
+        Ok(note.relative_path())
     }
 
     /// To be called when the markdown file has changed - this will

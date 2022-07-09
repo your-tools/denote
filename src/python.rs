@@ -15,8 +15,8 @@ fn unwrap<T>(result: crate::Result<T>) -> PyResult<T> {
 
 fn to_python_result<T>(error: crate::Error) -> PyResult<T> {
     match error {
-        crate::Error::ParseError(e) => Err(PyValueError::new_err(e.to_string())),
-        crate::Error::OSError(e) => Err(PyOSError::new_err(e.to_string())),
+        crate::Error::ParseError(e) => Err(PyValueError::new_err(e)),
+        crate::Error::OSError(e) => Err(PyOSError::new_err(e)),
     }
 }
 
@@ -32,7 +32,7 @@ fn path_buf_to_pathlib(path_buf: PathBuf) -> PyResult<PyObject> {
 
 #[pyfunction]
 fn slugify(title: &str) -> PyResult<String> {
-    Ok(crate::slugify(title).to_string())
+    Ok(crate::slugify(title))
 }
 
 #[pyclass]
@@ -203,7 +203,7 @@ impl Note {
     #[getter]
     fn front_matter(&self) -> FrontMatter {
         FrontMatter {
-            _inner: self._inner.front_matter().clone(),
+            _inner: self._inner.front_matter(),
         }
     }
 
