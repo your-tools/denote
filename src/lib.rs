@@ -133,8 +133,16 @@ impl Id {
 
     pub fn human_date(&self) -> String {
         let ymd = &self.0[0..8];
+        let year = &ymd[0..4];
+        let month = &ymd[4..6];
+        let day = &ymd[6..8];
+
         let hms = &self.0[9..];
-        format!("{ymd} {hms}")
+        let hours = &hms[0..2];
+        let minutes = &hms[2..4];
+        let seconds = &hms[4..6];
+
+        format!("{year}-{month}-{day} {hours}:{minutes}:{seconds}")
     }
 
     pub fn from_date(offsett_date_time: &OffsetDateTime) -> Self {
