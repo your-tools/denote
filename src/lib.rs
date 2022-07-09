@@ -306,7 +306,7 @@ impl Note {
         self.metadata.relative_path()
     }
 
-    pub fn front_matter(self) -> FrontMatter {
+    pub fn front_matter(&self) -> FrontMatter {
         self.metadata.front_matter()
     }
 
