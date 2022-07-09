@@ -221,10 +221,6 @@ impl Metadata {
         }
     }
 
-    pub fn update_title(&mut self, front_matter: &FrontMatter) {
-        self.title = front_matter.title.to_owned()
-    }
-
     pub fn relative_path(&self) -> PathBuf {
         let Metadata {
             id,
