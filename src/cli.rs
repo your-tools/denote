@@ -1,5 +1,6 @@
 use crate::Result;
-use std::{path::Path, process::Command};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use time::macros::format_description;
 use time::OffsetDateTime;
 
@@ -7,7 +8,8 @@ use crate::{NotesRepository, OSError};
 
 /// Spawn $EDITOR in a tempory file, then save the
 /// note with the proper filename in `base_path`
-pub fn new_note(base_path: &Path) -> Result<()> {
+/// Return the path to the saved note
+pub fn new_note(base_path: &Path) -> Result<PathBuf> {
     let now = OffsetDateTime::now_utc();
     let format = format_description!("[year][month][day]T[hour]:[minute]:[second]");
     let formatted_date = now
@@ -31,7 +33,8 @@ keywords:
     std::fs::write(&note_path, template)
         .map_err(|e| OSError(format!("Could not create makdown file: {e}")))?;
 
-    let editor = std::env::var("EDITOR").map_err(|_| OSError("EDITOR should be set".to_string()))?;
+    let editor =
+        std::env::var("EDITOR").map_err(|_| OSError("EDITOR should be set".to_string()))?;
 
     let status = Command::new(&editor)
         .args([&note_path.as_os_str()])

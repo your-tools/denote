@@ -352,7 +352,7 @@ impl NotesRepository {
 
     /// Import a plain md file and save it with the correct name
     /// Called by cli::new_note
-    pub fn import_from_markdown(&self, markdown_path: &Path) -> Result<()> {
+    pub fn import_from_markdown(&self, markdown_path: &Path) -> Result<PathBuf> {
         let contents = std::fs::read_to_string(markdown_path)
             .map_err(|e| Error::OSError(format!("while reading: {markdown_path:#?}: {e}")))?;
         let (front_matter, text) = try_extract_front_matter(&contents).ok_or_else(|| {
@@ -373,13 +373,16 @@ impl NotesRepository {
         let metadata = Metadata::new(id, title.to_string(), keywords, extension);
 
         let note = Note::new(metadata, text);
-        self.save(&note)
+        self.save(&note)?;
+
+        Ok(note.relative_path().to_path_buf())
     }
 
     /// To be called when the markdown file has changed - this will
     /// handle the rename automatically - note that the ID won't change,
     /// this is by design
-    pub fn on_update(&self, relative_path: &Path) -> Result<()> {
+    /// Return the new note path (which may hve changed)
+    pub fn on_update(&self, relative_path: &Path) -> Result<PathBuf> {
         let full_path = &self.base_path.join(relative_path);
         let name = name_from_relative_path(relative_path);
         let metadata = parse_file_name(&name).map_err(|e| {
@@ -397,7 +400,7 @@ impl NotesRepository {
             ))
         })?;
         let new_title = match new_front_matter.title() {
-            None => return Ok(()),
+            None => return Ok(full_path.to_path_buf()),
             Some(s) => s,
         };
         let new_keywords: Vec<_> = new_front_matter.keywords();
@@ -411,12 +414,16 @@ impl NotesRepository {
                 .map_err(|e| Error::OSError(format!("Could not rename note: {e}")))?;
         }
 
-        Ok(())
+        Ok(new_full_path.to_path_buf())
     }
 
     /// Load a note file
     pub fn load(&self, relative_path: &Path) -> Result<Note> {
-        assert!(relative_path.is_relative());
+        if !relative_path.is_relative() {
+            return Err(OSError(format!(
+                "Expecting a relative path when loading, get {relative_path:+?}"
+            )));
+        }
         let full_path = &self.base_path.join(relative_path);
         let contents = std::fs::read_to_string(full_path)
             .map_err(|e| OSError(format!("While loading note from {full_path:?}: {e}")))?;
@@ -435,8 +442,8 @@ impl NotesRepository {
 
     /// Save a note in the repository
     /// Create `<year>` directory when needed
-    pub fn save(&self, note: &Note) -> Result<()> {
-        let relative_path = note.relative_path();
+    pub fn save(&self, note: &Note) -> Result<PathBuf> {
+        let relative_path = &note.relative_path();
         let full_path = &self.base_path.join(relative_path);
 
         let parent_path = full_path.parent().expect("full path should have a parent");
@@ -461,7 +468,7 @@ impl NotesRepository {
         std::fs::write(full_path, &to_write)
             .map_err(|e| OSError(format!("While saving note in {full_path:?}: {e}")))?;
         println!("Note saved in {full_path:#?}");
-        Ok(())
+        Ok(relative_path.to_path_buf())
     }
 }
 

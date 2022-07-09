@@ -29,14 +29,18 @@ fn main() -> Result<()> {
     let opts = Opts::parse();
     let notes = NotesRepository::open(&opts.base_path)?;
     match opts.action {
-        Action::Create => cli::new_note(&opts.base_path),
+        Action::Create => {
+            cli::new_note(&opts.base_path)?;
+            Ok(())
+        }
         Action::Update(update) => {
             let relative_path = pathdiff::diff_paths(&update.full_path, &opts.base_path)
                 .ok_or_else(|| {
                     eprintln!("repository and update paths should be relative to each other");
                     std::process::exit(1);
                 })?;
-            notes.on_update(&relative_path)
+            notes.on_update(&relative_path)?;
+            Ok(())
         }
     }
 }
