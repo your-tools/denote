@@ -11,11 +11,14 @@ use crate::{NotesRepository, OSError};
 /// Return the path to the saved note
 pub fn new_note(base_path: &Path) -> Result<PathBuf> {
     let now = OffsetDateTime::now_utc();
-    let format = format_description!("[year][month][day]T[hour]:[minute]:[second]");
+    let format = format_description!("[year]-[month]-[day] [hour]:[minute]");
     let formatted_date = now
         .format(&format)
         .expect("format checked during compilation");
 
+    // Note: the date here is just for cosmetics - the 'real' date
+    // will be set by the NotesRepository during import where there's
+    // an other call to OffsetDateTime::now()
     let template = format!(
         r#"---
 date: {formatted_date}
