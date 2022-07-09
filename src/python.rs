@@ -31,11 +31,6 @@ fn path_buf_to_pathlib(path_buf: PathBuf) -> PyResult<PyObject> {
 }
 
 #[pyfunction]
-fn add(x: usize, y: usize) -> usize {
-    x + y
-}
-
-#[pyfunction]
 fn slugify(title: &str) -> PyResult<String> {
     Ok(crate::slugify(title).to_string())
 }
