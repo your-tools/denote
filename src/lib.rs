@@ -61,7 +61,14 @@ fn name_from_relative_path(relative_path: &Path) -> String {
     last.to_string_lossy().into_owned()
 }
 
-fn parse_file_name(name: &str) -> Result<Metadata> {
+pub struct FileInfo {
+    pub id: Id,
+    pub slug: String,
+    pub keywords: Vec<String>,
+    pub extension: String,
+}
+
+pub fn parse_file_name(name: &str) -> Result<FileInfo> {
     let captures = FILENAME_RE
         .captures(name)
         .ok_or_else(|| ParseError(format!("Filename {name} did not match expected regex")))?;
@@ -92,40 +99,29 @@ fn parse_file_name(name: &str) -> Result<Metadata> {
         .as_str()
         .to_owned();
 
-    Ok(Metadata {
+    Ok(FileInfo {
         id,
         slug,
-        title: None,
         keywords,
         extension,
     })
 }
 
-fn try_extract_front_matter(contents: &str) -> Option<(FrontMatter, String)> {
+fn parse_front_matter(contents: &str) -> Result<(FrontMatter, String)> {
     let docs: Vec<_> = contents.splitn(3, "---\n").collect();
     if docs.is_empty() {
-        println!("skipping empty front_matter");
-        return None;
+        return Err(Error::ParseError("Missing front matter".to_string()));
     }
     if docs.len() < 2 {
-        println!("skipping invalid front_matter");
-        return None;
+        return Err(Error::ParseError("Unfinished front matter".to_string()));
     }
     let first_doc = &docs[1];
     let text = docs[2];
-    match FrontMatter::parse(first_doc) {
-        Ok(f) => Some((f, text.to_string())),
-        Err(ParseError(e)) => {
-            println!("skipping invalid front_matter: {}", e);
-            None
-        }
-        Err(_) => {
-            unreachable!()
-        }
-    }
+    let front_matter = FrontMatter::parse(first_doc)?;
+    Ok((front_matter, text.to_string()))
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Deserialize, Serialize)]
 /// A new-type on top of String so that only valid Ids can
 /// be used
 /// As a reminder, the Id in denote is YYYYMMDDTHHMMSS
@@ -181,14 +177,14 @@ impl FromStr for Id {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 /// Contain all the metadata about a note.
 /// Some of it come from the front matter, like the title,
 /// but some other come from the filename, like the slug, the extension,
 /// or the keywords
 pub struct Metadata {
     id: Id,
-    title: Option<String>,
+    title: String,
     slug: String,
     keywords: Vec<String>,
     extension: String,
@@ -199,7 +195,7 @@ impl Metadata {
         let slug = slug::slugify(&title);
         Metadata {
             id,
-            title: Some(title),
+            title,
             slug,
             keywords,
             extension,
@@ -214,7 +210,7 @@ impl Metadata {
         self.slug.as_ref()
     }
 
-    pub fn title(&self) -> Option<&String> {
+    pub fn title(&self) -> &str {
         self.title.as_ref()
     }
 
@@ -256,7 +252,7 @@ impl Metadata {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 /// The front matter of a note.
 /// Currently using YAML
 /// Note that `keywords` is list of words separated by spaces,
@@ -264,14 +260,14 @@ impl Metadata {
 ///
 /// The title may not be set
 pub struct FrontMatter {
-    title: Option<String>,
+    title: String,
     date: String,
     keywords: String,
 }
 
 impl FrontMatter {
-    pub fn title(&self) -> Option<&String> {
-        self.title.as_ref()
+    pub fn title(&self) -> &str {
+        &self.title
     }
 
     pub fn keywords(&self) -> Vec<String> {
@@ -280,6 +276,10 @@ impl FrontMatter {
 
     pub fn dump(&self) -> String {
         serde_yaml::to_string(self).expect("front matter should always be serializable")
+    }
+
+    pub fn slug(&self) -> String {
+        slug::slugify(&self.title)
     }
 
     pub fn parse(front_matter: &str) -> Result<Self> {
@@ -291,7 +291,7 @@ impl FrontMatter {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 /// A Note has some metadata and some text
 /// Note that the metada is different from the frontmatter, it does
 /// contain exacly the same data
@@ -315,17 +315,17 @@ impl Note {
 
     /// Update the metadata when the front matter changes
     pub fn update(&mut self, front_matter: &FrontMatter) {
-        if let Some(new_title) = &front_matter.title {
-            self.metadata.title = Some(new_title.to_string());
-            let new_slug = slug::slugify(new_title);
-            self.metadata.slug = new_slug;
-        }
-        let new_keywords: Vec<_> = front_matter.keywords();
-        self.metadata.keywords = new_keywords;
+        self.metadata.title = front_matter.title.to_string();
+        self.metadata.slug = front_matter.slug();
+        self.metadata.keywords = front_matter.keywords();
     }
 
     pub fn metadata(&self) -> &Metadata {
         &self.metadata
+    }
+
+    pub fn id(&self) -> &str {
+        self.metadata.id()
     }
 
     pub fn dump(&self) -> String {
@@ -337,6 +337,21 @@ impl Note {
         res.push_str(&self.text);
         res
     }
+}
+
+fn get_note_from_markdown(id: Id, contents: String) -> Result<Note> {
+    let (front_matter, text) = parse_front_matter(&contents)?;
+    let title = front_matter.title.to_string();
+    let slug = front_matter.slug();
+    let keywords = front_matter.keywords();
+    let metadata = Metadata {
+        id,
+        title,
+        slug,
+        keywords,
+        extension: "md".to_string(),
+    };
+    Ok(Note { metadata, text })
 }
 
 #[derive(Debug)]
@@ -373,27 +388,12 @@ impl NotesRepository {
     pub fn import_from_markdown(&self, markdown_path: &Path) -> Result<PathBuf> {
         let contents = std::fs::read_to_string(markdown_path)
             .map_err(|e| Error::OSError(format!("while reading: {markdown_path:#?}: {e}")))?;
-        let (front_matter, text) = try_extract_front_matter(&contents).ok_or_else(|| {
-            Error::ParseError(format!(
-                "Could not extract front matter from {markdown_path:#?}"
-            ))
-        })?;
-
-        let title = front_matter.title().ok_or_else(|| {
-            Error::ParseError(format!(
-                "Front matter should in {markdown_path:#?} should contain a title"
-            ))
-        })?;
-        let keywords: Vec<_> = front_matter.keywords();
         let now = OffsetDateTime::now_utc();
         let id = Id::from_date(&now);
-        let extension = "md".to_owned();
-        let metadata = Metadata::new(id, title.to_string(), keywords, extension);
 
-        let note = Note::new(metadata, text);
-        self.save(&note)?;
-
-        Ok(note.relative_path())
+        let note = get_note_from_markdown(id, contents)
+            .map_err(|e| Error::OSError(format!("invalid contents for {markdown_path:#?}: {e}")))?;
+        self.save(&note)
     }
 
     /// To be called when the markdown file has changed - this will
@@ -425,17 +425,10 @@ impl NotesRepository {
         let full_path = &self.base_path.join(relative_path);
         let contents = std::fs::read_to_string(full_path)
             .map_err(|e| OSError(format!("While loading note from {full_path:?}: {e}")))?;
+
         let file_name = &name_from_relative_path(relative_path);
-        let metadata = parse_file_name(file_name)?;
-        let mut note = Note {
-            metadata,
-            text: contents,
-        };
-        if let Some((front_matter, text)) = try_extract_front_matter(&note.text) {
-            note.update(&front_matter);
-            note.text = text;
-        }
-        Ok(note)
+        let info = parse_file_name(file_name)?;
+        get_note_from_markdown(info.id, contents)
     }
 
     /// Save a note in the repository
@@ -474,10 +467,20 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn test_id_sorting() {
+        let id1 = Id::from_str("20220707T142708").unwrap();
+        let id2 = Id::from_str("2022070lT142709").unwrap();
+        let id3 = Id::from_str("2022070lT142709").unwrap();
+
+        assert_eq!(id2, id3);
+        assert!(id1 < id2)
+    }
+
     fn make_note() -> Note {
         let id = Id::from_str("20220707T142708").unwrap();
         let slug = "this-is-a-title".to_owned();
-        let title = Some("This is a title".to_owned());
+        let title = "This is a title".to_owned();
         let keywords = vec!["k1".to_owned(), "k2".to_owned()];
         let extension = "md".to_owned();
         let metadata = Metadata {
@@ -506,15 +509,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_metadata_from_file_name() {
+    fn test_parse_info_from_file_name() {
         let name = "20220707T142708--this-is-a-title__k1_k2.md";
 
-        let metadata = parse_file_name(name).unwrap();
+        let file_info = parse_file_name(name).unwrap();
 
-        assert_eq!(metadata.id(), "20220707T142708");
-        assert_eq!(metadata.slug(), "this-is-a-title");
-        assert_eq!(metadata.extension(), "md");
-        assert_eq!(metadata.keywords(), &["k1", "k2"]);
+        assert_eq!(file_info.id.as_str(), "20220707T142708");
+        assert_eq!(file_info.slug.as_str(), "this-is-a-title");
+        assert_eq!(&file_info.keywords, &["k1", "k2"]);
+        assert_eq!(file_info.extension.as_str(), "md");
     }
 
     #[test]

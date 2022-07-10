@@ -1,9 +1,18 @@
+import shelve
 import textwrap
 from datetime import datetime
 
 import pytest
 
-from denote import FrontMatter, Id, Metadata, Note, NotesRepository, slugify
+from denote import (
+    FrontMatter,
+    Id,
+    Metadata,
+    Note,
+    NotesRepository,
+    slugify,
+    get_note_from_markdown,
+)
 
 
 def test_slugify():
@@ -13,6 +22,14 @@ def test_slugify():
 def test_invalid_id():
     with pytest.raises(ValueError) as e:
         id = Id("bad")
+
+
+def test_id_ordering():
+    id1 = Id("20220707T142708")
+    id2 = Id("20220707T142709")
+    id3 = Id("20220707T142709")
+
+    assert id1 < id2
 
 
 def test_id_as_human_date():
@@ -171,3 +188,89 @@ def test_update_note_path_when_keywords_change(tmp_path):
     note = notes_repository.load(relative_path)
     notes_repository.save(note)
     assert "__tag1_tag2" in note.relative_path
+
+
+class NoteShelf:
+    def __init__(self, shelve_path):
+        self.shelve_path = shelve_path
+
+    def __enter__(self):
+        self.db = shelve.open(self.shelve_path)
+        return self
+
+    def save(self, note):
+        self.db[note.id] = note.dump()
+
+    def load(self, id):
+        markdown = self.db[str(id)]
+        return get_note_from_markdown(id, markdown)
+
+    def notes(self):
+        for id_s, markdown in self.db.items():
+            id = Id(id_s)
+            yield get_note_from_markdown(id, markdown)
+
+    def __exit__(self, *args):
+        self.db.close()
+
+
+def test_add_note_to_empty_shelf(tmp_path):
+    id = Id("20220707T142708")
+    metadata = Metadata(id, "title", ["k1", "k2"], "md")
+    text = "this is my note\n"
+    note = Note(text=text, metadata=metadata)
+
+    shelve_path = str(tmp_path / "notes.shelve")
+
+    with NoteShelf(shelve_path) as shelf:
+        shelf.save(note)
+
+    with NoteShelf(shelve_path) as shelf:
+        saved = shelf.load(id)
+
+    assert saved == note
+
+
+def test_update_title_of_note_in_shelf(tmp_path):
+    id = Id("20220707T142708")
+    metadata = Metadata(id, "old title", ["k1", "k2"], "md")
+    text = "this is my note\n"
+    note = Note(text=text, metadata=metadata)
+
+    shelve_path = str(tmp_path / "notes.shelve")
+
+    with NoteShelf(shelve_path) as shelf:
+        shelf.save(note)
+
+    with NoteShelf(shelve_path) as shelf:
+        note = shelf.load(id)
+        contents = note.dump()
+        new_contents = contents.replace("old title", "new title")
+        new_note = get_note_from_markdown(id, new_contents)
+        shelf.save(new_note)
+
+        actual = list(shelf.notes())
+        assert len(actual) == 1
+
+
+def test_add_two_notes_in_shelf(tmp_path):
+    shelve_path = str(tmp_path / "notes.shelve")
+
+    first_id = Id("20220707T142708")
+    first_metadata = Metadata(first_id, "First!", ["one"], "md")
+    first_text = "I am the first note - so happy !"
+    first_note = Note(text=first_text, metadata=first_metadata)
+
+    second_id = Id("20220708T152912")
+    second_metadata = Metadata(second_id, "Second :(", ["two"], "md")
+    second_text = "I am the second note - so sad :("
+    second_note = Note(text=second_text, metadata=second_metadata)
+
+    with NoteShelf(shelve_path) as shelf:
+        shelf.save(first_note)
+        shelf.save(second_note)
+
+    with NoteShelf(shelve_path) as shelf:
+        saved = list(shelf.notes())
+
+    assert sorted(saved) == [first_note, second_note]

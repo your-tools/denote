@@ -78,7 +78,23 @@ impl Id {
         Ok(Self { _inner: id })
     }
 
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> PyResult<bool> {
+        Ok(match op {
+            CompareOp::Eq => self._inner == other._inner,
+            CompareOp::Lt => self._inner < other._inner,
+            CompareOp::Le => self._inner <= other._inner,
+            CompareOp::Ne => self._inner != other._inner,
+            CompareOp::Gt => self._inner > other._inner,
+            CompareOp::Ge => self._inner >= other._inner,
+        })
+    }
+
     fn __str__(slf: PyRef<'_, Self>) -> String {
+        let res = slf._inner.as_str();
+        res.to_string()
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>) -> String {
         let res = slf._inner.as_str();
         res.to_string()
     }
@@ -109,7 +125,7 @@ impl Metadata {
     }
 
     #[getter]
-    fn title(&self) -> Option<&String> {
+    fn title(&self) -> &str {
         self._inner.title()
     }
 
@@ -128,14 +144,29 @@ impl Metadata {
         self._inner.relative_path().to_string_lossy().to_string()
     }
 
+    fn __richcmp__(&self, other: &Metadata, op: CompareOp) -> PyResult<bool> {
+        Ok(match op {
+            CompareOp::Eq => self._inner == other._inner,
+            CompareOp::Ne => self._inner != other._inner,
+            CompareOp::Lt => self.title() < other.title(),
+            CompareOp::Le => self.title() <= other.title(),
+            CompareOp::Gt => self.title() > other.title(),
+            CompareOp::Ge => self.title() >= other.title(),
+        })
+    }
+
     fn __str__(slf: PyRef<'_, Self>) -> String {
+        let metadata = &slf._inner;
+        format!("{metadata:?}")
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>) -> String {
         let metadata = &slf._inner;
         format!("{metadata:?}")
     }
 }
 
 #[pyclass]
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct FrontMatter {
     _inner: crate::FrontMatter,
 }
@@ -143,7 +174,7 @@ struct FrontMatter {
 #[pymethods]
 impl FrontMatter {
     #[getter]
-    fn title(&self) -> Option<&String> {
+    fn title(&self) -> &str {
         self._inner.title()
     }
 
@@ -163,20 +194,31 @@ impl FrontMatter {
     }
 
     fn __richcmp__(&self, other: &FrontMatter, op: CompareOp) -> PyResult<bool> {
-        match op {
-            CompareOp::Eq => Ok(other == self),
-            CompareOp::Lt => Ok(other < self),
-            CompareOp::Le => Ok(other <= self),
-            CompareOp::Ne => Ok(other != self),
-            CompareOp::Gt => Ok(other > self),
-            CompareOp::Ge => Ok(other >= self),
-        }
+        Ok(match op {
+            CompareOp::Eq => self._inner == other._inner,
+            CompareOp::Ne => self._inner != other._inner,
+            CompareOp::Lt => self.title() < other.title(),
+            CompareOp::Le => self.title() <= other.title(),
+            CompareOp::Gt => self.title() > other.title(),
+            CompareOp::Ge => self.title() >= other.title(),
+        })
     }
 
     fn __str__(slf: PyRef<'_, Self>) -> String {
         let frontmatter = &slf._inner;
         format!("{frontmatter:?}")
     }
+
+    fn __repr__(slf: PyRef<'_, Self>) -> String {
+        let frontmatter = &slf._inner;
+        format!("{frontmatter:?}")
+    }
+}
+
+#[pyfunction]
+fn get_note_from_markdown(id: &Id, contents: String) -> PyResult<Note> {
+    let inner = unwrap(crate::get_note_from_markdown(id._inner.clone(), contents))?;
+    Ok(Note { _inner: inner })
 }
 
 #[pyclass]
@@ -214,11 +256,32 @@ impl Note {
         }
     }
 
+    #[getter]
+    fn id(&self) -> &str {
+        self._inner.id()
+    }
+
     pub fn dump(&self) -> String {
         self._inner.dump()
     }
 
+    fn __richcmp__(&self, other: &Note, op: CompareOp) -> PyResult<bool> {
+        Ok(match op {
+            CompareOp::Eq => self._inner == other._inner,
+            CompareOp::Ne => self._inner != other._inner,
+            CompareOp::Lt => self.id() < other.id(),
+            CompareOp::Le => self.id() <= other.id(),
+            CompareOp::Gt => self.id() > other.id(),
+            CompareOp::Ge => self.id() >= other.id(),
+        })
+    }
+
     fn __str__(slf: PyRef<'_, Self>) -> String {
+        let inner = &slf._inner;
+        format!("{inner:?}")
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>) -> String {
         let inner = &slf._inner;
         format!("{inner:?}")
     }
@@ -284,6 +347,7 @@ impl NotesRepository {
 #[pymodule]
 fn denote(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(slugify, m)?)?;
+    m.add_function(wrap_pyfunction!(get_note_from_markdown, m)?)?;
     m.add_class::<Id>()?;
     m.add_class::<Metadata>()?;
     m.add_class::<FrontMatter>()?;
